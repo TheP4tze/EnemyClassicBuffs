@@ -17,6 +17,7 @@ local defaults = {
         columns = 8,
         rows = 2,
         size = 28,
+        spacing = 3,
         cooldownFontSize = 10,
         unlocked = false,
         point = "TOPLEFT",
@@ -28,6 +29,7 @@ local defaults = {
         columns = 8,
         rows = 2,
         size = 28,
+        spacing = 3,
         cooldownFontSize = 10,
         unlocked = false,
         point = "TOPLEFT",
@@ -309,7 +311,7 @@ local function LayoutFrame(auraFrame, displayCount)
 
     local capacity = columns * rows
     local size = Clamp(Round(config.size), 16, 64)
-    local gap = 3
+    local gap = Clamp(Round(config.spacing or 3), 0, 20)
     local titleHeight = config.unlocked and 18 or 0
     local width = columns * size + math.max(columns - 1, 0) * gap
     local height = rows * size + math.max(rows - 1, 0) * gap + titleHeight
@@ -608,8 +610,15 @@ local function CreateOptionsPanel()
         -- Stores the configured buff icon size.
         function(value) db.buffs.size = value end
     )
+    local buffSpacing = MakeSlider(
+        panel, "Buff Spacing", 20, -282, 0, 20, 1,
+        -- Returns the configured spacing between buff icons.
+        function() return db.buffs.spacing end,
+        -- Stores the configured spacing between buff icons.
+        function(value) db.buffs.spacing = value end
+    )
     local buffFontSize = MakeSlider(
-        panel, "Cooldown Font Size", 20, -282, 6, 32, 1,
+        panel, "Cooldown Font Size", 20, -338, 6, 32, 1,
         -- Returns the configured buff countdown font size.
         function() return db.buffs.cooldownFontSize end,
         -- Stores the configured buff countdown font size.
@@ -619,7 +628,7 @@ local function CreateOptionsPanel()
         panel,
         "Unlock Buff Frame (shows 25 test buffs)",
         16,
-        -334,
+        -390,
         -- Returns whether the buff frame is unlocked.
         function() return db.buffs.unlocked end,
         -- Stores whether the buff frame is unlocked.
@@ -648,8 +657,15 @@ local function CreateOptionsPanel()
         -- Stores the configured debuff icon size.
         function(value) db.debuffs.size = value end
     )
+    local debuffSpacing = MakeSlider(
+        panel, "Debuff Spacing", 374, -282, 0, 20, 1,
+        -- Returns the configured spacing between debuff icons.
+        function() return db.debuffs.spacing end,
+        -- Stores the configured spacing between debuff icons.
+        function(value) db.debuffs.spacing = value end
+    )
     local debuffFontSize = MakeSlider(
-        panel, "Cooldown Font Size", 374, -282, 6, 32, 1,
+        panel, "Cooldown Font Size", 374, -338, 6, 32, 1,
         -- Returns the configured debuff countdown font size.
         function() return db.debuffs.cooldownFontSize end,
         -- Stores the configured debuff countdown font size.
@@ -659,7 +675,7 @@ local function CreateOptionsPanel()
         panel,
         "Unlock Debuff Frame (shows 25 test debuffs)",
         370,
-        -334,
+        -390,
         -- Returns whether the debuff frame is unlocked.
         function() return db.debuffs.unlocked end,
         -- Stores whether the debuff frame is unlocked.
@@ -667,8 +683,9 @@ local function CreateOptionsPanel()
     )
 
     panel.controls = {
-        buffColumns, buffRows, buffSize, buffFontSize, buffUnlock,
-        debuffColumns, debuffRows, debuffSize, debuffFontSize, debuffUnlock,
+        buffColumns, buffRows, buffSize, buffSpacing, buffFontSize, buffUnlock,
+        debuffColumns, debuffRows, debuffSize, debuffSpacing,
+        debuffFontSize, debuffUnlock,
     }
     -- Refreshes every control whenever the Blizzard settings panel is shown.
     panel:SetScript("OnShow", function(self)
