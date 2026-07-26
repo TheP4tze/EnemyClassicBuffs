@@ -1,0 +1,12 @@
+## Interface: 11509
+## Title: EnemyClassicBuffs
+## Notes: Merges target auras from the Blizzard API and enemy combat log.
+## Author: Patzê-Firemaw
+## Version: 1.2.1
+## SavedVariables: EnemyClassicBuffsDB
+
+Libs\LibStub\LibStub.lua
+Libs\CallbackHandler-1.0\CallbackHandler-1.0.xml
+Libs\LibClassicDurations\LibClassicDurations.xml
+
+EnemyClassicBuffs.lua
