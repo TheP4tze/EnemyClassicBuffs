@@ -13,7 +13,9 @@ local TEST_AURA_COUNT = 25
 
 local defaults = {
     databaseVersion = 2,
+    welcomeShown = false,
     buffs = {
+        enabled = true,
         columns = 8,
         rows = 2,
         size = 28,
@@ -26,6 +28,7 @@ local defaults = {
         y = 130,
     },
     debuffs = {
+        enabled = true,
         columns = 8,
         rows = 2,
         size = 28,
@@ -407,6 +410,11 @@ end
 -- Refreshes one aura frame from live data or preview data.
 local function UpdateAuraFrame(auraFrame)
     local config = db[auraFrame.configKey]
+    if not config.enabled then
+        auraFrame:Hide()
+        return
+    end
+
     local auras = config.unlocked
         and FillTestAuras(auraFrame)
         or CollectMergedAuras(auraFrame.auraType)
@@ -589,36 +597,46 @@ local function CreateOptionsPanel()
     )
 
     MakeLabel(panel, "Buff Frame", 16, -82, "GameFontNormalLarge")
+    local buffEnabled = MakeCheckbox(
+        panel,
+        "Enable Buff Frame",
+        16,
+        -106,
+        -- Returns whether the buff frame is enabled.
+        function() return db.buffs.enabled end,
+        -- Stores whether the buff frame is enabled.
+        function(value) db.buffs.enabled = value end
+    )
     local buffColumns = MakeSlider(
-        panel, "Buffs per Row", 20, -114, 1, MAX_COLUMNS, 1,
+        panel, "Buffs per Row", 20, -154, 1, MAX_COLUMNS, 1,
         -- Returns the configured buff column count.
         function() return db.buffs.columns end,
         -- Stores the configured buff column count.
         function(value) db.buffs.columns = value end
     )
     local buffRows = MakeSlider(
-        panel, "Buff Rows", 20, -170, 1, MAX_ROWS, 1,
+        panel, "Buff Rows", 20, -210, 1, MAX_ROWS, 1,
         -- Returns the configured buff row count.
         function() return db.buffs.rows end,
         -- Stores the configured buff row count.
         function(value) db.buffs.rows = value end
     )
     local buffSize = MakeSlider(
-        panel, "Buff Size", 20, -226, 16, 64, 1,
+        panel, "Buff Size", 20, -266, 16, 64, 1,
         -- Returns the configured buff icon size.
         function() return db.buffs.size end,
         -- Stores the configured buff icon size.
         function(value) db.buffs.size = value end
     )
     local buffSpacing = MakeSlider(
-        panel, "Buff Spacing", 20, -282, 0, 20, 1,
+        panel, "Buff Spacing", 20, -322, 0, 20, 1,
         -- Returns the configured spacing between buff icons.
         function() return db.buffs.spacing end,
         -- Stores the configured spacing between buff icons.
         function(value) db.buffs.spacing = value end
     )
     local buffFontSize = MakeSlider(
-        panel, "Cooldown Font Size", 20, -338, 6, 32, 1,
+        panel, "Cooldown Font Size", 20, -378, 6, 32, 1,
         -- Returns the configured buff countdown font size.
         function() return db.buffs.cooldownFontSize end,
         -- Stores the configured buff countdown font size.
@@ -628,7 +646,7 @@ local function CreateOptionsPanel()
         panel,
         "Unlock Buff Frame (shows 25 test buffs)",
         16,
-        -390,
+        -430,
         -- Returns whether the buff frame is unlocked.
         function() return db.buffs.unlocked end,
         -- Stores whether the buff frame is unlocked.
@@ -636,36 +654,46 @@ local function CreateOptionsPanel()
     )
 
     MakeLabel(panel, "Debuff Frame", 370, -82, "GameFontNormalLarge")
+    local debuffEnabled = MakeCheckbox(
+        panel,
+        "Enable Debuff Frame",
+        370,
+        -106,
+        -- Returns whether the debuff frame is enabled.
+        function() return db.debuffs.enabled end,
+        -- Stores whether the debuff frame is enabled.
+        function(value) db.debuffs.enabled = value end
+    )
     local debuffColumns = MakeSlider(
-        panel, "Debuffs per Row", 374, -114, 1, MAX_COLUMNS, 1,
+        panel, "Debuffs per Row", 374, -154, 1, MAX_COLUMNS, 1,
         -- Returns the configured debuff column count.
         function() return db.debuffs.columns end,
         -- Stores the configured debuff column count.
         function(value) db.debuffs.columns = value end
     )
     local debuffRows = MakeSlider(
-        panel, "Debuff Rows", 374, -170, 1, MAX_ROWS, 1,
+        panel, "Debuff Rows", 374, -210, 1, MAX_ROWS, 1,
         -- Returns the configured debuff row count.
         function() return db.debuffs.rows end,
         -- Stores the configured debuff row count.
         function(value) db.debuffs.rows = value end
     )
     local debuffSize = MakeSlider(
-        panel, "Debuff Size", 374, -226, 16, 64, 1,
+        panel, "Debuff Size", 374, -266, 16, 64, 1,
         -- Returns the configured debuff icon size.
         function() return db.debuffs.size end,
         -- Stores the configured debuff icon size.
         function(value) db.debuffs.size = value end
     )
     local debuffSpacing = MakeSlider(
-        panel, "Debuff Spacing", 374, -282, 0, 20, 1,
+        panel, "Debuff Spacing", 374, -322, 0, 20, 1,
         -- Returns the configured spacing between debuff icons.
         function() return db.debuffs.spacing end,
         -- Stores the configured spacing between debuff icons.
         function(value) db.debuffs.spacing = value end
     )
     local debuffFontSize = MakeSlider(
-        panel, "Cooldown Font Size", 374, -338, 6, 32, 1,
+        panel, "Cooldown Font Size", 374, -378, 6, 32, 1,
         -- Returns the configured debuff countdown font size.
         function() return db.debuffs.cooldownFontSize end,
         -- Stores the configured debuff countdown font size.
@@ -675,7 +703,7 @@ local function CreateOptionsPanel()
         panel,
         "Unlock Debuff Frame (shows 25 test debuffs)",
         370,
-        -390,
+        -430,
         -- Returns whether the debuff frame is unlocked.
         function() return db.debuffs.unlocked end,
         -- Stores whether the debuff frame is unlocked.
@@ -683,9 +711,10 @@ local function CreateOptionsPanel()
     )
 
     panel.controls = {
-        buffColumns, buffRows, buffSize, buffSpacing, buffFontSize, buffUnlock,
-        debuffColumns, debuffRows, debuffSize, debuffSpacing,
-        debuffFontSize, debuffUnlock,
+        buffEnabled, buffColumns, buffRows, buffSize, buffSpacing,
+        buffFontSize, buffUnlock,
+        debuffEnabled, debuffColumns, debuffRows, debuffSize,
+        debuffSpacing, debuffFontSize, debuffUnlock,
     }
     -- Refreshes every control whenever the Blizzard settings panel is shown.
     panel:SetScript("OnShow", function(self)
@@ -770,6 +799,22 @@ frame:SetScript("OnEvent", function(self, event, ...)
             else
                 OpenOptions()
             end
+        end
+
+        if not db.welcomeShown then
+            DEFAULT_CHAT_FRAME:AddMessage(
+                "|cff66ccffEnemyClassicBuffs|r loaded."
+            )
+            DEFAULT_CHAT_FRAME:AddMessage(
+                "|cffffffff/ecb|r - Open the addon settings."
+            )
+            DEFAULT_CHAT_FRAME:AddMessage(
+                "|cffffffff/ecb buffs|r - Toggle the buff-frame positioning preview."
+            )
+            DEFAULT_CHAT_FRAME:AddMessage(
+                "|cffffffff/ecb debuffs|r - Toggle the debuff-frame positioning preview."
+            )
+            db.welcomeShown = true
         end
 
         self:RegisterEvent("PLAYER_TARGET_CHANGED")

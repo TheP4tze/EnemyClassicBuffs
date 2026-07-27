@@ -2,7 +2,7 @@
 ## Title: EnemyClassicBuffs
 ## Notes: Merges target auras from the Blizzard API and enemy combat log.
 ## Author: Patzê-Firemaw
-## Version: 1.2.2
+## Version: 1.3.0
 ## SavedVariables: EnemyClassicBuffsDB
 
 Libs\LibStub\LibStub.lua
