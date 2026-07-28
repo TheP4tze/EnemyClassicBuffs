@@ -14,6 +14,8 @@ local TEST_AURA_COUNT = 25
 local defaults = {
     databaseVersion = 2,
     welcomeShown = false,
+    hideBlizzardTargetBuffs = false,
+    hideBlizzardTargetDebuffs = false,
     buffs = {
         enabled = true,
         columns = 8,
@@ -22,6 +24,8 @@ local defaults = {
         spacing = 3,
         cooldownFontSize = 10,
         unlocked = false,
+        testMode = false,
+        testCount = 5,
         point = "TOPLEFT",
         relativePoint = "CENTER",
         x = 0,
@@ -35,6 +39,8 @@ local defaults = {
         spacing = 3,
         cooldownFontSize = 10,
         unlocked = false,
+        testMode = false,
+        testCount = 5,
         point = "TOPLEFT",
         relativePoint = "CENTER",
         x = 0,
@@ -82,6 +88,82 @@ local function AuraKey(aura)
     -- matching Blizzard aura does. Spell identity is therefore the reliable
     -- merge key for this compact display.
     return tostring(aura.spellID or aura.name or "?")
+end
+
+-- Applies the configured visibility state to one Blizzard target aura button.
+local function SetBlizzardAuraButtonVisible(button, visible)
+    if not button then return end
+    button:SetAlpha(visible and 1 or 0)
+    button:EnableMouse(visible)
+end
+
+-- Applies the hide settings to active legacy and pooled target-frame auras.
+local function ApplyBlizzardTargetAuraVisibility()
+    local showBuffs = not db.hideBlizzardTargetBuffs
+    local showDebuffs = not db.hideBlizzardTargetDebuffs
+
+    -- Legacy target-frame buttons used by older Classic builds.
+    for index = 1, (MAX_TARGET_BUFFS or 32) do
+        SetBlizzardAuraButtonVisible(
+            _G["TargetFrameBuff" .. index],
+            showBuffs
+        )
+    end
+    for index = 1, (MAX_TARGET_DEBUFFS or 32) do
+        SetBlizzardAuraButtonVisible(
+            _G["TargetFrameDebuff" .. index],
+            showDebuffs
+        )
+    end
+
+    -- Classic Era 1.15.9 uses aura frame pools instead of numbered globals.
+    if TargetFrame and TargetFrame.auraPools then
+        local buffPool = TargetFrame.auraPools:GetPool(
+            "TargetBuffFrameTemplate"
+        )
+        if buffPool then
+            for auraButton in buffPool:EnumerateActive() do
+                SetBlizzardAuraButtonVisible(auraButton, showBuffs)
+            end
+        end
+
+        local debuffPool = TargetFrame.auraPools:GetPool(
+            "TargetDebuffFrameTemplate"
+        )
+        if debuffPool then
+            for auraButton in debuffPool:EnumerateActive() do
+                SetBlizzardAuraButtonVisible(auraButton, showDebuffs)
+            end
+        end
+    end
+end
+
+-- Refreshes Blizzard target auras and reapplies the selected visibility.
+local function RefreshBlizzardTargetAuras()
+    if TargetFrame then
+        if type(TargetFrame.UpdateAuras) == "function" then
+            TargetFrame:UpdateAuras()
+        elseif type(TargetFrame_UpdateAuras) == "function" then
+            TargetFrame_UpdateAuras(TargetFrame)
+        end
+    end
+    ApplyBlizzardTargetAuraVisibility()
+end
+
+-- Hooks the active Blizzard target-frame aura update implementation.
+local function SetupBlizzardTargetAuraHook()
+    if type(TargetFrame_UpdateAuras) == "function" then
+        hooksecurefunc(
+            "TargetFrame_UpdateAuras",
+            ApplyBlizzardTargetAuraVisibility
+        )
+    elseif TargetFrame and type(TargetFrame.UpdateAuras) == "function" then
+        hooksecurefunc(
+            TargetFrame,
+            "UpdateAuras",
+            ApplyBlizzardTargetAuraVisibility
+        )
+    end
 end
 
 -- Reads and normalizes one aura from the newest available Blizzard aura API.
@@ -216,7 +298,8 @@ end
 
 -- Creates one reusable aura icon including cooldown, stack count, and tooltip.
 local function CreateAuraButton(auraFrame)
-    local button = CreateFrame("Button", nil, auraFrame)
+    local button = CreateFrame("Button", nil, auraFrame.iconContainer)
+    button.ownerFrame = auraFrame
 
     button.icon = button:CreateTexture(nil, "ARTWORK")
     button.icon:SetAllPoints()
@@ -306,8 +389,16 @@ local function LayoutFrame(auraFrame, displayCount)
     local configuredRows = Clamp(Round(config.rows), 1, MAX_ROWS)
     local rows
 
-    if config.unlocked then
-        rows = math.max(configuredRows, math.ceil(TEST_AURA_COUNT / columns))
+    if config.testMode then
+        local testCount = Clamp(
+            Round(config.testCount or 5),
+            0,
+            TEST_AURA_COUNT
+        )
+        rows = math.max(
+            configuredRows,
+            math.ceil(testCount / columns)
+        )
     else
         rows = configuredRows
     end
@@ -320,6 +411,18 @@ local function LayoutFrame(auraFrame, displayCount)
     local height = rows * size + math.max(rows - 1, 0) * gap + titleHeight
 
     auraFrame:SetSize(math.max(width, 1), math.max(height, 1))
+    auraFrame.iconContainer:ClearAllPoints()
+    auraFrame.iconContainer:SetPoint(
+        "TOPLEFT",
+        auraFrame,
+        "TOPLEFT",
+        0,
+        -titleHeight
+    )
+    auraFrame.iconContainer:SetSize(
+        math.max(width, 1),
+        math.max(height - titleHeight, 1)
+    )
     EnsureButtons(auraFrame, math.max(capacity, displayCount or 0))
 
     for index, button in ipairs(auraFrame.buttons) do
@@ -332,10 +435,10 @@ local function LayoutFrame(auraFrame, displayCount)
         local row = math.floor((index - 1) / columns)
         button:SetPoint(
             "TOPLEFT",
-            auraFrame,
+            auraFrame.iconContainer,
             "TOPLEFT",
             column * (size + gap),
-            -titleHeight - row * (size + gap)
+            -row * (size + gap)
         )
 
         button.count:SetFont(
@@ -373,7 +476,7 @@ local function SetButtonAura(button, aura)
         button.cooldown:SetCooldown(expirationTime - duration, duration)
         ApplyCooldownFont(
             button,
-            db[button:GetParent().configKey].cooldownFontSize
+            db[button.ownerFrame.configKey].cooldownFontSize
         )
         button.cooldown:Show()
     else
@@ -391,7 +494,12 @@ local function FillTestAuras(auraFrame)
         or testDebuffSpellIDs
     local results = {}
 
-    for index = 1, TEST_AURA_COUNT do
+    local testCount = Clamp(
+        Round(db[auraFrame.configKey].testCount or 5),
+        0,
+        TEST_AURA_COUNT
+    )
+    for index = 1, testCount do
         local spellID = spellIDs[((index - 1) % #spellIDs) + 1]
         results[index] = {
             name = GetSpellInfo(spellID) or ("Test " .. index),
@@ -415,12 +523,12 @@ local function UpdateAuraFrame(auraFrame)
         return
     end
 
-    local auras = config.unlocked
+    local auras = config.testMode
         and FillTestAuras(auraFrame)
         or CollectMergedAuras(auraFrame.auraType)
     local capacity = LayoutFrame(auraFrame, #auras)
-    local visibleCount = config.unlocked
-        and TEST_AURA_COUNT
+    local visibleCount = config.testMode
+        and Clamp(Round(config.testCount or 5), 0, TEST_AURA_COUNT)
         or math.min(#auras, capacity)
 
     for index, button in ipairs(auraFrame.buttons) do
@@ -432,7 +540,7 @@ local function UpdateAuraFrame(auraFrame)
         end
     end
 
-    if config.unlocked then
+    if config.unlocked or config.testMode then
         auraFrame:Show()
     elseif visibleCount > 0 and UnitExists("target") then
         auraFrame:Show()
@@ -450,6 +558,14 @@ local function CreateAuraFrame(configKey, auraType, title)
     auraFrame:SetMovable(true)
     auraFrame:SetClampedToScreen(true)
     auraFrame:SetFrameStrata("MEDIUM")
+
+    -- Keeps icon coordinates independent from UI replacements and skins.
+    -- Icons always start at this container's top-left corner, grow right,
+    -- and continue on the next row below.
+    auraFrame.iconContainer = CreateFrame("Frame", nil, auraFrame)
+    auraFrame.iconContainer:SetPoint("TOPLEFT", auraFrame, "TOPLEFT")
+    auraFrame.iconContainer:SetSize(1, 1)
+    auraFrame.iconContainer:SetFrameLevel(auraFrame:GetFrameLevel() + 1)
 
     local config = db[configKey]
     auraFrame:SetPoint(
@@ -519,7 +635,7 @@ local function MakeLabel(parent, text, x, y, template)
 end
 
 -- Creates a numeric slider that immediately applies its setting.
-local function MakeSlider(parent, labelText, x, y, minimum, maximum, step, getter, setter)
+local function MakeSlider(parent, labelText, x, y, minimum, maximum, step, getter, setter, enabledGetter)
     MakeLabel(parent, labelText, x, y)
 
     local valueText = parent:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
@@ -546,6 +662,7 @@ local function MakeSlider(parent, labelText, x, y, minimum, maximum, step, gette
 
     -- Rounds, stores, and immediately applies a slider value.
     slider:SetScript("OnValueChanged", function(self, value)
+        if enabledGetter and not enabledGetter() then return end
         value = Round(value)
         valueText:SetText(value)
         setter(value)
@@ -556,6 +673,10 @@ local function MakeSlider(parent, labelText, x, y, minimum, maximum, step, gette
     slider.Refresh = function(self)
         self:SetValue(getter())
         valueText:SetText(getter())
+        local enabled = not enabledGetter or enabledGetter()
+        self:SetEnabled(enabled)
+        self:SetAlpha(enabled and 1 or 0.4)
+        valueText:SetAlpha(enabled and 1 or 0.4)
     end
     return slider
 end
@@ -574,6 +695,11 @@ local function MakeCheckbox(parent, labelText, x, y, getter, setter)
     checkbox:SetScript("OnClick", function(self)
         setter(self:GetChecked() and true or false)
         RefreshAll()
+        if parent.controls then
+            for _, control in ipairs(parent.controls) do
+                control:Refresh()
+            end
+        end
     end)
     -- Synchronizes the checkbox state from SavedVariables.
     checkbox.Refresh = function(self)
@@ -644,13 +770,32 @@ local function CreateOptionsPanel()
     )
     local buffUnlock = MakeCheckbox(
         panel,
-        "Unlock Buff Frame (shows 25 test buffs)",
+        "Unlock Buff Frame",
         16,
         -430,
         -- Returns whether the buff frame is unlocked.
         function() return db.buffs.unlocked end,
         -- Stores whether the buff frame is unlocked.
         function(value) db.buffs.unlocked = value end
+    )
+    local buffTestMode = MakeCheckbox(
+        panel,
+        "Show Test Buffs",
+        16,
+        -458,
+        -- Returns whether buff preview icons are enabled.
+        function() return db.buffs.testMode end,
+        -- Stores whether buff preview icons are enabled.
+        function(value) db.buffs.testMode = value end
+    )
+    local buffTestCount = MakeSlider(
+        panel, "Number of Test Buffs", 20, -490, 0, TEST_AURA_COUNT, 1,
+        -- Returns the configured number of buff preview icons.
+        function() return db.buffs.testCount end,
+        -- Stores the configured number of buff preview icons.
+        function(value) db.buffs.testCount = value end,
+        -- Enables the slider only while the buff test mode is active.
+        function() return db.buffs.testMode end
     )
 
     MakeLabel(panel, "Debuff Frame", 370, -82, "GameFontNormalLarge")
@@ -701,7 +846,7 @@ local function CreateOptionsPanel()
     )
     local debuffUnlock = MakeCheckbox(
         panel,
-        "Unlock Debuff Frame (shows 25 test debuffs)",
+        "Unlock Debuff Frame",
         370,
         -430,
         -- Returns whether the debuff frame is unlocked.
@@ -709,12 +854,75 @@ local function CreateOptionsPanel()
         -- Stores whether the debuff frame is unlocked.
         function(value) db.debuffs.unlocked = value end
     )
+    local debuffTestMode = MakeCheckbox(
+        panel,
+        "Show Test Debuffs",
+        370,
+        -458,
+        -- Returns whether debuff preview icons are enabled.
+        function() return db.debuffs.testMode end,
+        -- Stores whether debuff preview icons are enabled.
+        function(value) db.debuffs.testMode = value end
+    )
+    local debuffTestCount = MakeSlider(
+        panel, "Number of Test Debuffs", 374, -490, 0, TEST_AURA_COUNT, 1,
+        -- Returns the configured number of debuff preview icons.
+        function() return db.debuffs.testCount end,
+        -- Stores the configured number of debuff preview icons.
+        function(value) db.debuffs.testCount = value end,
+        -- Enables the slider only while the debuff test mode is active.
+        function() return db.debuffs.testMode end
+    )
+
+    MakeLabel(
+        panel,
+        "Blizzard Target Frame",
+        16,
+        -552,
+        "GameFontNormalLarge"
+    )
+    local hideBlizzardBuffs = MakeCheckbox(
+        panel,
+        "Hide Blizzard Target Buffs",
+        16,
+        -578,
+        -- Returns whether Blizzard target buffs should be hidden.
+        function() return db.hideBlizzardTargetBuffs end,
+        -- Stores and immediately applies Blizzard target buff visibility.
+        function(value)
+            db.hideBlizzardTargetBuffs = value
+            RefreshBlizzardTargetAuras()
+        end
+    )
+    local hideBlizzardDebuffs = MakeCheckbox(
+        panel,
+        "Hide Blizzard Target Debuffs",
+        370,
+        -578,
+        -- Returns whether Blizzard target debuffs should be hidden.
+        function() return db.hideBlizzardTargetDebuffs end,
+        -- Stores and immediately applies Blizzard target debuff visibility.
+        function(value)
+            db.hideBlizzardTargetDebuffs = value
+            RefreshBlizzardTargetAuras()
+        end
+    )
+
+    MakeLabel(
+        panel,
+        "Created by Patzê-Firemaw",
+        16,
+        -626,
+        "GameFontDisableSmall"
+    )
 
     panel.controls = {
         buffEnabled, buffColumns, buffRows, buffSize, buffSpacing,
-        buffFontSize, buffUnlock,
+        buffFontSize, buffUnlock, buffTestMode, buffTestCount,
         debuffEnabled, debuffColumns, debuffRows, debuffSize,
-        debuffSpacing, debuffFontSize, debuffUnlock,
+        debuffSpacing, debuffFontSize, debuffUnlock, debuffTestMode,
+        debuffTestCount,
+        hideBlizzardBuffs, hideBlizzardDebuffs,
     }
     -- Refreshes every control whenever the Blizzard settings panel is shown.
     panel:SetScript("OnShow", function(self)
@@ -784,6 +992,8 @@ frame:SetScript("OnEvent", function(self, event, ...)
         ECB.buffFrame = CreateAuraFrame("buffs", "BUFF", "Target Buffs")
         ECB.debuffFrame = CreateAuraFrame("debuffs", "DEBUFF", "Target Debuffs")
 
+        SetupBlizzardTargetAuraHook()
+        ApplyBlizzardTargetAuraVisibility()
         CreateOptionsPanel()
 
         SLASH_ENEMYCLASSICBUFFS1 = "/ecb"
@@ -795,6 +1005,12 @@ frame:SetScript("OnEvent", function(self, event, ...)
                 RefreshAll()
             elseif message == "debuffs" then
                 db.debuffs.unlocked = not db.debuffs.unlocked
+                RefreshAll()
+            elseif message == "bufftest" then
+                db.buffs.testMode = not db.buffs.testMode
+                RefreshAll()
+            elseif message == "debufftest" then
+                db.debuffs.testMode = not db.debuffs.testMode
                 RefreshAll()
             else
                 OpenOptions()
@@ -809,10 +1025,16 @@ frame:SetScript("OnEvent", function(self, event, ...)
                 "|cffffffff/ecb|r - Open the addon settings."
             )
             DEFAULT_CHAT_FRAME:AddMessage(
-                "|cffffffff/ecb buffs|r - Toggle the buff-frame positioning preview."
+                "|cffffffff/ecb buffs|r - Lock or unlock the buff frame."
             )
             DEFAULT_CHAT_FRAME:AddMessage(
-                "|cffffffff/ecb debuffs|r - Toggle the debuff-frame positioning preview."
+                "|cffffffff/ecb debuffs|r - Lock or unlock the debuff frame."
+            )
+            DEFAULT_CHAT_FRAME:AddMessage(
+                "|cffffffff/ecb bufftest|r - Toggle 25 test buffs."
+            )
+            DEFAULT_CHAT_FRAME:AddMessage(
+                "|cffffffff/ecb debufftest|r - Toggle 25 test debuffs."
             )
             db.welcomeShown = true
         end
